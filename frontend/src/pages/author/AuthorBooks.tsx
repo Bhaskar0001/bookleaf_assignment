@@ -78,16 +78,16 @@ export const AuthorBooks: React.FC<AuthorBooksProps> = ({ onSelectBookForTicket 
                     <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{b.book_id}</div>
                   </td>
                   <td>
-                    <span className={`badge ${b.status === 'PUBLISHED' ? 'badge-resolved' : 'badge-in_progress'}`}>
-                      {b.status.replace('_', ' ')}
+                    <span className={`badge ${b.status.toLowerCase().includes('publish') ? 'badge-resolved' : 'badge-in_progress'}`}>
+                      {b.status}
                     </span>
                   </td>
                   <td style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>
-                    {b.isbn || <span style={{ color: '#94a3b8' }}>Pending Proof</span>}
+                    {b.isbn || <span style={{ color: '#94a3b8' }}>Pending Assignment</span>}
                   </td>
                   <td>{b.genre || '—'}</td>
                   <td>{b.publication_date ? new Date(b.publication_date).toLocaleDateString() : <span style={{ color: '#94a3b8' }}>In Production</span>}</td>
-                  <td>{b.mrp ? `₹${Number(b.mrp).toFixed(2)}` : <span style={{ color: '#94a3b8' }}>TBD</span>}</td>
+                  <td>{b.mrp ? `₹${Number(b.mrp).toFixed(2)}` : <span style={{ color: '#94a3b8' }}>—</span>}</td>
                   <td style={{ fontWeight: 600 }}>{b.copies_sold.toLocaleString()}</td>
                   <td>
                     <div style={{ fontSize: '0.8rem' }}>
@@ -108,7 +108,7 @@ export const AuthorBooks: React.FC<AuthorBooksProps> = ({ onSelectBookForTicket 
                           </span>
                         ))
                       ) : (
-                        <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>None</span>
+                        <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>—</span>
                       )}
                     </div>
                   </td>

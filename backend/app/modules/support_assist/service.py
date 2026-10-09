@@ -135,6 +135,7 @@ class SupportAssistService:
                 status="FAILED",
                 error_message=str(e),
             )
+            self.db.add(run_prio)
         # 3. Deterministic Duplicate Detection & Event Logging
         try:
             from app.modules.relationships.service import RelationshipService

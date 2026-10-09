@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import type { Ticket, Book } from '../../types';
 import { apiRequest } from '../../lib/api';
+import { useRealtime } from '../../context/RealtimeContext';
 import { PlusCircle, Paperclip, MessageSquare, ArrowRight, X } from 'lucide-react';
 
 interface AuthorTicketsProps {
@@ -14,6 +15,7 @@ export const AuthorTickets: React.FC<AuthorTicketsProps> = ({
   preselectedBookId,
   onClearPreselectedBook,
 }) => {
+  const { subscribe } = useRealtime();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [books, setBooks] = useState<Book[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -24,13 +26,31 @@ export const AuthorTickets: React.FC<AuthorTicketsProps> = ({
   const [subject, setSubject] = useState<string>('');
   const [description, setDescription] = useState<string>('');
   const [selectedBookId, setSelectedBookId] = useState<string>(preselectedBookId || '');
+  const [category, setCategory] = useState<string>('GENERAL');
   const [attachmentName, setAttachmentName] = useState<string>('');
+  const [attachmentData, setAttachmentData] = useState<string>('');
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [formError, setFormError] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchData();
+  const fetchData = useCallback(async (isSilent: boolean = false) => {
+    try {
+      if (!isSilent) setLoading(true);
+      const [ticketsRes, booksRes] = await Promise.all([
+        apiRequest<{ success: boolean; data: Ticket[] }>('/author/tickets'),
+        apiRequest<{ success: boolean; data: Book[] }>('/author/books'),
+      ]);
+      setTickets(ticketsRes.data);
+      setBooks(booksRes.data);
+    } catch (err: any) {
+      if (!isSilent) setError(err.message || 'Failed to load tickets');
+    } finally {
+      if (!isSilent) setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    fetchData(false);
+  }, [fetchData]);
 
   useEffect(() => {
     if (preselectedBookId) {
@@ -39,21 +59,13 @@ export const AuthorTickets: React.FC<AuthorTicketsProps> = ({
     }
   }, [preselectedBookId]);
 
-  async function fetchData() {
-    try {
-      setLoading(true);
-      const [ticketsRes, booksRes] = await Promise.all([
-        apiRequest<{ success: boolean; data: Ticket[] }>('/author/tickets'),
-        apiRequest<{ success: boolean; data: Book[] }>('/author/books'),
-      ]);
-      setTickets(ticketsRes.data);
-      setBooks(booksRes.data);
-    } catch (err: any) {
-      setError(err.message || 'Failed to load tickets');
-    } finally {
-      setLoading(false);
-    }
-  }
+  // Live WebSocket subscription
+  useEffect(() => {
+    const unsubscribe = subscribe(() => {
+      fetchData(true);
+    });
+    return unsubscribe;
+  }, [subscribe, fetchData]);
 
   const handleCreateTicket = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,15 +77,22 @@ export const AuthorTickets: React.FC<AuthorTicketsProps> = ({
     try {
       setSubmitting(true);
       setFormError(null);
+      let fullDescription = description.trim();
+      if (attachmentName && attachmentData) {
+        fullDescription += `\n\n[Attachment: ${attachmentName}](${attachmentData})`;
+      } else if (attachmentName) {
+        fullDescription += `\n\n[Attachment: ${attachmentName}]`;
+      }
+
       const payload: any = {
         subject: subject.trim(),
-        description: description.trim(),
+        description: fullDescription,
       };
+      if (category && category !== 'AUTO') {
+        payload.category = category;
+      }
       if (selectedBookId) {
         payload.bookId = selectedBookId;
-      }
-      if (attachmentName) {
-        payload.attachment_name = attachmentName;
       }
 
       const res = await apiRequest<{ success: boolean; data: any }>('/author/tickets', {
@@ -85,7 +104,9 @@ export const AuthorTickets: React.FC<AuthorTicketsProps> = ({
       setSubject('');
       setDescription('');
       setSelectedBookId('');
+      setCategory('');
       setAttachmentName('');
+      setAttachmentData('');
       setIsModalOpen(false);
       if (onClearPreselectedBook) onClearPreselectedBook();
 
@@ -269,6 +290,25 @@ export const AuthorTickets: React.FC<AuthorTicketsProps> = ({
                 </select>
               </div>
 
+              {/* Inquiry Category */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#334155', marginBottom: '0.25rem' }}>
+                  Inquiry Category *
+                </label>
+                <select
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.875rem' }}
+                >
+                  <option value="GENERAL">General Inquiry / Platform Assistance</option>
+                  <option value="ROYALTY_PAYMENT">Royalty & Payment Calculation</option>
+                  <option value="ISBN_METADATA">ISBN, Title & Metadata</option>
+                  <option value="PRINTING_QUALITY">Printing Quality & Manufacturing</option>
+                  <option value="DISTRIBUTION_AVAILABILITY">Distribution & Retail Availability</option>
+                  <option value="BOOK_STATUS">Production Stage & Book Status</option>
+                </select>
+              </div>
+
               {/* Subject */}
               <div>
                 <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#334155', marginBottom: '0.25rem' }}>
@@ -299,26 +339,56 @@ export const AuthorTickets: React.FC<AuthorTicketsProps> = ({
                 />
               </div>
 
-              {/* Attachment UI-only */}
+              {/* Attachment Picker */}
               <div>
                 <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#334155', marginBottom: '0.25rem' }}>
                   Attachment (Optional)
                 </label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <input
-                    type="text"
-                    placeholder="Attach royalty statement, screenshot, or invoice..."
-                    value={attachmentName}
-                    onChange={(e) => setAttachmentName(e.target.value)}
-                    style={{ flex: 1, padding: '0.45rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem' }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setAttachmentName('statement_oct2026.pdf')}
+                  <label
                     className="btn btn-secondary btn-sm"
+                    style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
                   >
-                    <Paperclip size={13} /> Sample File
-                  </button>
+                    <Paperclip size={13} /> {attachmentName ? 'Change File' : 'Choose File'}
+                    <input
+                      type="file"
+                      style={{ display: 'none' }}
+                      accept="image/*,.pdf,.doc,.docx,.txt"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          if (file.size > 8 * 1024 * 1024) {
+                            setFormError('Attachment exceeds 8MB limit.');
+                            return;
+                          }
+                          setAttachmentName(file.name);
+                          const reader = new FileReader();
+                          reader.onload = (ev) => {
+                            setAttachmentData(ev.target?.result as string);
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                    />
+                  </label>
+                  {attachmentName ? (
+                    <span style={{ fontSize: '0.8rem', color: '#0f172a', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                      {attachmentName}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAttachmentName('');
+                          setAttachmentData('');
+                        }}
+                        style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: 0 }}
+                        title="Remove attachment"
+                      >
+                        <X size={13} />
+                      </button>
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>No file selected</span>
+                  )}
                 </div>
               </div>
 

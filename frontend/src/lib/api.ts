@@ -1,4 +1,20 @@
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
+/**
+ * BookLeaf Unified API Client
+ * Centralizes request dispatching, authentication token propagation,
+ * and robust URL normalization for local, Render, and Vercel environments.
+ */
+
+const resolveApiBaseUrl = (): string => {
+  const envUrl = (import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || '').trim();
+  if (!envUrl) {
+    return '/api/v1';
+  }
+  const clean = envUrl.replace(/\/+$/, '');
+  // If the configured URL already ends with /api/v1, use it as is; otherwise append /api/v1
+  return clean.endsWith('/api/v1') ? clean : `${clean}/api/v1`;
+};
+
+export const API_BASE_URL = resolveApiBaseUrl();
 
 export class ApiError extends Error {
   code: string;
@@ -29,7 +45,9 @@ export async function apiRequest<T = any>(
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const url = `${API_BASE_URL}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
+  // Remove leading slash from endpoint if present to concatenate cleanly
+  const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  const url = `${API_BASE_URL}${path}`;
 
   const response = await fetch(url, {
     ...options,

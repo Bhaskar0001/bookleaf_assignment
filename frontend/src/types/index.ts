@@ -97,8 +97,10 @@ export interface DuplicateSignals {
 }
 
 export interface DuplicateCandidate {
-  ticket_id: string;
-  ticket_number: string;
+  ticket_id?: string;
+  ticketId?: string;
+  ticket_number?: string;
+  ticketNumber?: string;
   subject: string;
   status: string;
   similarity: number;
@@ -144,4 +146,11 @@ export interface Ticket {
   closed_at?: string | null;
   messages: TicketMessage[];
   internalNotes?: TicketInternalNote[];
+}
+
+export interface DraftResponse {
+  draft_response: string;
+  suggested_action?: string | null;
+  requires_manual_verification: boolean;
+  verification_notes?: string | null;
 }

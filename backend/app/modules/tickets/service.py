@@ -16,7 +16,6 @@ from app.modules.tickets.schemas import (
 )
 from app.modules.timeline.service import TicketEventService
 from app.modules.books.repository import BookRepository
-from app.modules.support_assist.service import SupportAssistService
 from app.db.models import Ticket, Author, User, TicketAssignment, TicketMessage, TicketInternalNote
 from app.core.errors import (
     NotFoundException,
@@ -59,6 +58,8 @@ class TicketService:
             subject=req.subject,
             description=req.description,
             book_id=book_id,
+            category=req.category or "GENERAL",
+            priority="MEDIUM",
         )
         await self.db.flush()
 
@@ -70,27 +71,36 @@ class TicketService:
             metadata={
                 "subject": ticket.subject,
                 "book_id": str(book_id) if book_id else None,
+                "category": ticket.category,
             },
         )
 
-        # 3. Commit transaction
+        # 3. Deterministic duplicate candidate detection & event logging
+        try:
+            from app.modules.relationships.service import RelationshipService
+            rel_svc = RelationshipService(self.db)
+            rel_data = await rel_svc.get_duplicate_candidates_and_confirmed(ticket)
+            candidates = rel_data.get("candidates", [])
+            if candidates:
+                top_cand = candidates[0]
+                if top_cand.similarity >= 0.65:
+                    await self.event_service.record_event(
+                        ticket_id=ticket.id,
+                        event_type="DUPLICATE_DETECTED",
+                        actor_user_id=None,
+                        metadata={
+                            "candidate_ticket_id": str(top_cand.ticket_id),
+                            "candidate_ticket_number": top_cand.ticket_number,
+                            "score": top_cand.similarity,
+                            "signals": top_cand.signals.model_dump(),
+                        },
+                    )
+        except Exception as e:
+            logger.warning(f"Duplicate candidate event generation skipped for ticket {ticket.id}: {e}")
+
+        # 4. Commit transaction
         await self.db.commit()
         await self.db.refresh(ticket)
-
-        # 4. Trigger asynchronous background classification & prioritization with independent session
-        async def _run_assist_bg(t_id: uuid.UUID):
-            try:
-                from app.db.session import AsyncSessionLocal
-                async with AsyncSessionLocal() as bg_session:
-                    svc = SupportAssistService(bg_session)
-                    await svc.process_ticket_async(t_id)
-            except Exception as bg_err:
-                logger.warning(f"Background assist processing failed for ticket {t_id}: {bg_err}")
-
-        try:
-            asyncio.create_task(_run_assist_bg(ticket.id))
-        except Exception as e:
-            logger.warning(f"Could not trigger background assist task: {e}")
 
         return ticket
 
@@ -395,17 +405,22 @@ class TicketService:
         return ticket
 
     def to_ticket_out(self, t: Ticket) -> TicketOut:
+        from sqlalchemy.orm import attributes
+        state = attributes.instance_state(t)
+
         author_summary = None
-        if t.author:
+        if "author" in state.dict and t.author:
+            author_state = attributes.instance_state(t.author)
+            email = t.author.user.email if "user" in author_state.dict and t.author.user else None
             author_summary = TicketAuthorSummary(
                 id=t.author.id,
                 author_id=t.author.author_id,
                 pen_name=t.author.pen_name,
-                email=t.author.user.email if t.author.user else None,
+                email=email,
             )
 
         book_summary = None
-        if t.book:
+        if "book" in state.dict and t.book:
             book_summary = TicketBookSummary(
                 id=t.book.id,
                 book_id=t.book.book_id,
@@ -415,18 +430,20 @@ class TicketService:
             )
 
         msgs = []
-        for m in getattr(t, "messages", []):
-            sender_name = m.sender.full_name if m.sender else None
-            msgs.append(
-                TicketMessageOut(
-                    id=m.id,
-                    sender_user_id=m.sender_user_id,
-                    sender_name=sender_name,
-                    sender_role=m.sender_role,
-                    message=m.message,
-                    created_at=m.created_at,
+        if "messages" in state.dict:
+            for m in t.messages:
+                m_state = attributes.instance_state(m)
+                sender_name = m.sender.full_name if "sender" in m_state.dict and m.sender else None
+                msgs.append(
+                    TicketMessageOut(
+                        id=m.id,
+                        sender_user_id=m.sender_user_id,
+                        sender_name=sender_name,
+                        sender_role=m.sender_role,
+                        message=m.message,
+                        created_at=m.created_at,
+                    )
                 )
-            )
 
         return TicketOut(
             id=t.id,
@@ -454,3 +471,4 @@ class TicketService:
             closed_at=t.closed_at,
             messages=msgs,
         )
+

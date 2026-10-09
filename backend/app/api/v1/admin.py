@@ -25,8 +25,8 @@ from app.modules.relationships.schemas import (
     LinkDuplicateRequest,
     UnlinkDuplicateRequest,
 )
-from app.modules.support_assist.service import SupportAssistService
 from app.modules.notifications.websocket_manager import manager
+from app.modules.support_assist.service import SupportAssistService
 from app.core.errors import NotFoundException
 
 router = APIRouter(prefix="/admin", tags=["Admin Operations"], dependencies=[Depends(require_admin)])
@@ -269,17 +269,6 @@ async def post_internal_note(
     }
 
 
-@router.post("/tickets/{ticket_id}/draft-response")
-async def generate_draft_response(
-    ticket_id: str,
-    db: AsyncSession = Depends(get_db),
-):
-    service = TicketService(db)
-    ticket = await service.get_admin_ticket_detail(ticket_id)
-    support_service = SupportAssistService(db)
-    draft_result = await support_service.generate_response_draft(ticket)
-    return {"success": True, "data": draft_result.model_dump()}
-
 
 @router.post("/tickets/{ticket_id}/link-duplicate")
 async def link_duplicate(
@@ -355,3 +344,35 @@ async def get_admin_author_timeline(
 
     events = await event_service.get_admin_author_timeline(author_uuid)
     return {"success": True, "data": [e.model_dump() for e in events]}
+
+
+@router.get("/tickets/{ticket_id}/draft-response")
+@router.post("/tickets/{ticket_id}/draft-response")
+async def get_ticket_draft_response(
+    ticket_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    service = TicketService(db)
+    ticket = await service.get_admin_ticket_detail(ticket_id)
+    assist_service = SupportAssistService(db)
+    draft = await assist_service.generate_response_draft(ticket)
+    return {
+        "success": True,
+        "data": draft.model_dump(),
+    }
+
+
+@router.post("/tickets/{ticket_id}/reclassify")
+async def reclassify_ticket(
+    ticket_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    service = TicketService(db)
+    ticket = await service.get_admin_ticket_detail(ticket_id)
+    assist_service = SupportAssistService(db)
+    await assist_service.process_ticket_async(ticket.id)
+    refreshed = await service.get_admin_ticket_detail(ticket_id)
+    return {
+        "success": True,
+        "data": service.to_ticket_out(refreshed).model_dump(),
+    }

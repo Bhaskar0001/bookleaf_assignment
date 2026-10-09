@@ -1,5 +1,5 @@
-from typing import List
-from fastapi import APIRouter, Depends, status
+from typing import List, Optional
+from fastapi import APIRouter, Depends, status, Request, Response, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.api.dependencies import require_author, get_current_user
@@ -17,6 +17,10 @@ from app.modules.tickets.schemas import (
 from app.modules.timeline.service import TicketEventService
 from app.modules.timeline.schemas import AuthorTimelineResponse
 from app.modules.notifications.websocket_manager import manager
+from app.workers.tasks.ticket_tasks import dispatch_ticket_support_assist
+from app.core.rate_limit import limiter
+from app.core.errors import NotFoundException, ForbiddenException
+from app.core.logging import logger
 
 router = APIRouter(prefix="/author", tags=["Author Operations"])
 
@@ -55,19 +59,28 @@ async def get_book_detail(
 
 @router.get("/tickets")
 async def get_tickets(
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     author: Author = Depends(require_author),
     db: AsyncSession = Depends(get_db),
 ):
     service = TicketService(db)
     tickets = await service.repository.get_author_tickets(author.id)
+    paged = tickets[offset : offset + limit]
     return {
         "success": True,
-        "data": [service.to_ticket_out(t).model_dump() for t in tickets],
+        "data": [service.to_ticket_out(t).model_dump() for t in paged],
+        "total": len(tickets),
+        "limit": limit,
+        "offset": offset,
     }
 
 
 @router.post("/tickets", status_code=status.HTTP_201_CREATED)
+@limiter.limit("20/minute")
 async def create_ticket(
+    request: Request,
+    response: Response,
     req: CreateTicketRequest,
     author: Author = Depends(require_author),
     db: AsyncSession = Depends(get_db),
@@ -88,6 +101,9 @@ async def create_ticket(
             "createdAt": ticket.created_at.isoformat(),
         },
     )
+
+    # Dispatch to Celery background queue (with resilient fallback to async in-process)
+    dispatch_ticket_support_assist(ticket.id)
 
     return {
         "success": True,
@@ -113,8 +129,30 @@ async def get_ticket_detail(
     return {"success": True, "data": detail.model_dump()}
 
 
+@router.get("/tickets/{ticket_id}/timeline")
+async def get_ticket_timeline(
+    ticket_id: str,
+    author: Author = Depends(require_author),
+    db: AsyncSession = Depends(get_db),
+):
+    ticket_service = TicketService(db)
+    ticket = await ticket_service.repository.get_by_identifier(ticket_id)
+    if not ticket:
+        raise NotFoundException("Ticket not found", code="TICKET_NOT_FOUND")
+    if ticket.author_id != author.id:
+        raise ForbiddenException("You are not authorized to view this ticket.", code="TICKET_NOT_ACCESSIBLE")
+
+    event_service = TicketEventService(db)
+    events = await event_service.get_ticket_timeline(ticket.id, include_internal=False)
+    return {"success": True, "data": events}
+
+
+
 @router.post("/tickets/{ticket_id}/messages")
+@limiter.limit("40/minute")
 async def post_message(
+    request: Request,
+    response: Response,
     ticket_id: str,
     req: CreateMessageRequest,
     author: Author = Depends(require_author),

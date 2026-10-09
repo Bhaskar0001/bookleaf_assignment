@@ -1,10 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { apiRequest } from '../../lib/api';
-import type { Ticket, DuplicateCandidate, ConfirmedRelationship, TimelineEvent } from '../../types';
+import { useRealtime } from '../../context/RealtimeContext';
+import type { Ticket, DuplicateCandidate, ConfirmedRelationship, TimelineEvent, DraftResponse } from '../../types';
 import {
   ArrowLeft,
   Send,
-  FileText,
   Link2,
   Unlink,
   CheckCircle2,
@@ -12,9 +12,12 @@ import {
   BookOpen,
   User,
   Shield,
-  AlertTriangle,
   RefreshCw,
+  Sparkles,
+  Bot,
+  AlertTriangle,
 } from 'lucide-react';
+import { AttachmentViewer } from '../../components/common/AttachmentViewer';
 
 interface AdminWorkspaceProps {
   ticketNumber: string;
@@ -22,6 +25,7 @@ interface AdminWorkspaceProps {
 }
 
 export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({ ticketNumber, onBackToQueue }) => {
+  const { subscribe } = useRealtime();
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
   const [candidates, setCandidates] = useState<DuplicateCandidate[]>([]);
@@ -33,17 +37,17 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({ ticketNumber, on
   const [activeTab, setActiveTab] = useState<'messages' | 'internal_notes'>('messages');
   const [responseText, setResponseText] = useState<string>('');
   const [internalNoteText, setInternalNoteText] = useState<string>('');
-  const [draftLoading, setDraftLoading] = useState<boolean>(false);
-  const [draftMeta, setDraftMeta] = useState<any | null>(null);
   const [submitting, setSubmitting] = useState<boolean>(false);
 
-  useEffect(() => {
-    fetchWorkspaceData();
-  }, [ticketNumber]);
+  // AI Assist State
+  const [generatingDraft, setGeneratingDraft] = useState<boolean>(false);
+  const [aiDraft, setAiDraft] = useState<DraftResponse | null>(null);
+  const [reclassifying, setReclassifying] = useState<boolean>(false);
 
-  async function fetchWorkspaceData() {
+  const fetchWorkspaceData = useCallback(async (isSilent: boolean = false) => {
+    if (!ticketNumber) return;
     try {
-      setLoading(true);
+      if (!isSilent) setLoading(true);
       setActionError(null);
 
       // Load full ticket bundle, timeline, and duplicate relationships in parallel
@@ -60,11 +64,25 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({ ticketNumber, on
       setCandidates(relsRes.data.candidates);
       setConfirmedRelationships(relsRes.data.confirmedRelationships);
     } catch (err: any) {
-      setActionError(err.message || 'Failed to load workspace data');
+      if (!isSilent) setActionError(err.message || 'Failed to load workspace data');
     } finally {
-      setLoading(false);
+      if (!isSilent) setLoading(false);
     }
-  }
+  }, [ticketNumber]);
+
+  useEffect(() => {
+    fetchWorkspaceData(false);
+  }, [ticketNumber, fetchWorkspaceData]);
+
+  // Live WebSocket update subscription
+  useEffect(() => {
+    const unsubscribe = subscribe((evt) => {
+      if (evt.ticket_id === ticketNumber) {
+        fetchWorkspaceData(true);
+      }
+    });
+    return unsubscribe;
+  }, [ticketNumber, subscribe, fetchWorkspaceData]);
 
   // Action Handlers
   const handleStatusChange = async (newStatus: string) => {
@@ -73,7 +91,7 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({ ticketNumber, on
         method: 'PATCH',
         body: JSON.stringify({ status: newStatus }),
       });
-      await fetchWorkspaceData();
+      await fetchWorkspaceData(true);
     } catch (err: any) {
       setActionError(err.message);
     }
@@ -85,7 +103,7 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({ ticketNumber, on
         method: 'PATCH',
         body: JSON.stringify({ category: newCategory }),
       });
-      await fetchWorkspaceData();
+      await fetchWorkspaceData(true);
     } catch (err: any) {
       setActionError(err.message);
     }
@@ -97,26 +115,9 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({ ticketNumber, on
         method: 'PATCH',
         body: JSON.stringify({ priority: newPriority }),
       });
-      await fetchWorkspaceData();
+      await fetchWorkspaceData(true);
     } catch (err: any) {
       setActionError(err.message);
-    }
-  };
-
-  const handleGenerateDraft = async () => {
-    try {
-      setDraftLoading(true);
-      setActionError(null);
-      const res = await apiRequest<{ success: boolean; data: any }>(
-        `/admin/tickets/${ticketNumber}/draft-response`,
-        { method: 'POST' }
-      );
-      setResponseText(res.data.draft_response);
-      setDraftMeta(res.data);
-    } catch (err: any) {
-      setActionError(err.message || 'Draft generation failed');
-    } finally {
-      setDraftLoading(false);
     }
   };
 
@@ -131,7 +132,6 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({ ticketNumber, on
         body: JSON.stringify({ message: responseText.trim() }),
       });
       setResponseText('');
-      setDraftMeta(null);
       await fetchWorkspaceData();
     } catch (err: any) {
       setActionError(err.message || 'Failed to send response');
@@ -195,6 +195,55 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({ ticketNumber, on
     }
   };
 
+  const handleGenerateDraft = async () => {
+    try {
+      setGeneratingDraft(true);
+      setActionError(null);
+      const res = await apiRequest<{ success: boolean; data: DraftResponse }>(
+        `/admin/tickets/${ticketNumber}/draft-response`,
+        { method: 'POST' }
+      );
+      setAiDraft(res.data);
+    } catch (err: any) {
+      setActionError(err.message || 'Failed to generate AI draft response');
+    } finally {
+      setGeneratingDraft(false);
+    }
+  };
+
+  const handleApplyDraft = () => {
+    if (aiDraft?.draft_response) {
+      setResponseText(aiDraft.draft_response);
+    }
+  };
+
+  const handleReclassify = async () => {
+    try {
+      setReclassifying(true);
+      setActionError(null);
+      await apiRequest(`/admin/tickets/${ticketNumber}/reclassify`, { method: 'POST' });
+      await fetchWorkspaceData(true);
+    } catch (err: any) {
+      setActionError(err.message || 'Failed to reclassify ticket');
+    } finally {
+      setReclassifying(false);
+    }
+  };
+
+  if (!ticketNumber) {
+    return (
+      <div className="card" style={{ padding: '2.5rem', textAlign: 'center' }}>
+        <h2 style={{ fontSize: '1.1rem', fontWeight: 600, color: '#0f172a', marginBottom: '0.5rem' }}>No Ticket Selected</h2>
+        <p style={{ color: '#64748b', fontSize: '0.85rem', marginBottom: '1.25rem' }}>
+          Please select a ticket from the Operational Support Queue to view and manage it.
+        </p>
+        <button onClick={onBackToQueue} className="btn btn-primary btn-sm">
+          <ArrowLeft size={13} /> Return to Queue
+        </button>
+      </div>
+    );
+  }
+
   if (loading) {
     return <div style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>Loading operational workspace...</div>;
   }
@@ -245,16 +294,35 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({ ticketNumber, on
         {/* Operational State Controls */}
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
           
-          {/* Status select */}
+          {/* Status select with state-machine validation */}
           <select
             value={ticket.status}
             onChange={(e) => handleStatusChange(e.target.value)}
             style={{ padding: '0.4rem 0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.8rem', fontWeight: 600 }}
           >
-            <option value="OPEN">Set OPEN</option>
-            <option value="IN_PROGRESS">Set IN PROGRESS</option>
-            <option value="RESOLVED">Set RESOLVED</option>
-            <option value="CLOSED">Set CLOSED</option>
+            <option value={ticket.status} disabled>Current: {ticket.status.replace('_', ' ')}</option>
+            {ticket.status === 'OPEN' && (
+              <>
+                <option value="IN_PROGRESS">Set IN PROGRESS</option>
+                <option value="RESOLVED">Set RESOLVED</option>
+                <option value="CLOSED">Set CLOSED</option>
+              </>
+            )}
+            {ticket.status === 'IN_PROGRESS' && (
+              <>
+                <option value="RESOLVED">Set RESOLVED</option>
+                <option value="CLOSED">Set CLOSED</option>
+              </>
+            )}
+            {ticket.status === 'RESOLVED' && (
+              <>
+                <option value="IN_PROGRESS">Reopen to IN PROGRESS</option>
+                <option value="CLOSED">Set CLOSED</option>
+              </>
+            )}
+            {ticket.status === 'CLOSED' && (
+              <option value="IN_PROGRESS">Reopen to IN PROGRESS</option>
+            )}
           </select>
 
           {/* Priority override */}
@@ -285,7 +353,7 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({ ticketNumber, on
             <option value="GENERAL">GENERAL</option>
           </select>
 
-          <button onClick={fetchWorkspaceData} className="btn btn-secondary btn-sm" title="Refresh">
+          <button onClick={() => fetchWorkspaceData(false)} className="btn btn-secondary btn-sm" title="Refresh">
             <RefreshCw size={13} />
           </button>
         </div>
@@ -312,6 +380,52 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({ ticketNumber, on
               <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>{ticket.author?.pen_name}</div>
               <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Author ID: {ticket.author?.author_id}</div>
               <div style={{ fontSize: '0.75rem', color: '#64748b' }}>Email: {ticket.author?.email || 'Registered'}</div>
+            </div>
+          </div>
+
+          {/* AI Support Assist Card */}
+          <div className="card" style={{ borderLeft: '4px solid #6366f1' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
+              <h2 style={{ fontSize: '0.85rem', fontWeight: 700, color: '#4338ca', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: '0.4rem', margin: 0 }}>
+                <Sparkles size={15} /> AI Support Assist
+              </h2>
+              <button
+                type="button"
+                onClick={handleReclassify}
+                disabled={reclassifying}
+                className="btn btn-secondary btn-sm"
+                style={{ padding: '0.2rem 0.45rem', fontSize: '0.7rem' }}
+                title="Re-run AI Classification and Prioritization"
+              >
+                <RefreshCw size={11} className={reclassifying ? 'spin' : ''} /> {reclassifying ? 'Analyzing...' : 'Re-analyze'}
+              </button>
+            </div>
+            <div style={{ fontSize: '0.8rem', display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+              <div>
+                <span style={{ color: '#64748b', fontSize: '0.75rem' }}>System Category: </span>
+                <span style={{ fontWeight: 600, color: '#0f172a' }}>
+                  {ticket.system_category ? ticket.system_category.replace(/_/g, ' ') : (ticket.category || 'Pending')}
+                </span>
+                {ticket.system_category_confidence != null && (
+                  <span style={{ marginLeft: '0.35rem', fontSize: '0.7rem', color: '#6366f1', background: '#eef2ff', padding: '0.1rem 0.35rem', borderRadius: '4px', fontWeight: 600 }}>
+                    {Math.round(ticket.system_category_confidence * 100)}% conf
+                  </span>
+                )}
+              </div>
+              <div>
+                <span style={{ color: '#64748b', fontSize: '0.75rem' }}>System Priority: </span>
+                <span style={{ fontWeight: 600, color: '#0f172a' }}>
+                  {ticket.system_priority || ticket.priority || 'Pending'}
+                </span>
+                {ticket.system_priority_confidence != null && (
+                  <span style={{ marginLeft: '0.35rem', fontSize: '0.7rem', color: '#6366f1', background: '#eef2ff', padding: '0.1rem 0.35rem', borderRadius: '4px', fontWeight: 600 }}>
+                    {Math.round(ticket.system_priority_confidence * 100)}% conf
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize: '0.7rem', color: '#94a3b8', borderTop: '1px solid #f1f5f9', paddingTop: '0.35rem' }}>
+                Classification source: <strong>{ticket.category_source || 'SYSTEM'}</strong>
+              </div>
             </div>
           </div>
 
@@ -372,47 +486,51 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({ ticketNumber, on
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                {candidates.map((cand) => (
-                  <div
-                    key={cand.ticket_id}
-                    style={{
-                      background: '#f8fafc',
-                      padding: '0.6rem',
-                      borderRadius: '6px',
-                      border: '1px solid #e2e8f0',
-                      fontSize: '0.75rem',
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.2rem' }}>
-                      <span style={{ fontWeight: 700, color: '#0f172a' }}>{cand.ticket_number}</span>
-                      <span style={{ background: '#e0f2fe', color: '#0369a1', padding: '0.1rem 0.35rem', borderRadius: '4px', fontWeight: 600 }}>
-                        {Math.round(cand.similarity * 100)}% match
-                      </span>
+                {candidates.map((cand, idx) => {
+                  const candNum = cand.ticket_number || cand.ticketNumber || '';
+                  const candId = cand.ticket_id || cand.ticketId || candNum || `cand-${idx}`;
+                  return (
+                    <div
+                      key={candId}
+                      style={{
+                        background: '#f8fafc',
+                        padding: '0.6rem',
+                        borderRadius: '6px',
+                        border: '1px solid #e2e8f0',
+                        fontSize: '0.75rem',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.2rem' }}>
+                        <span style={{ fontWeight: 700, color: '#0f172a' }}>{candNum}</span>
+                        <span style={{ background: '#e0f2fe', color: '#0369a1', padding: '0.1rem 0.35rem', borderRadius: '4px', fontWeight: 600 }}>
+                          {Math.round(cand.similarity * 100)}% match
+                        </span>
+                      </div>
+                      <div style={{ color: '#334155', fontWeight: 500, marginBottom: '0.25rem' }}>
+                        {cand.subject}
+                      </div>
+                      <div style={{ fontSize: '0.7rem', color: '#64748b', marginBottom: '0.4rem' }}>
+                        Signals: {cand.reason}
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.35rem' }}>
+                        <button
+                          onClick={() => handleLinkDuplicate(candNum)}
+                          className="btn btn-primary btn-sm"
+                          style={{ fontSize: '0.7rem', padding: '0.2rem 0.4rem' }}
+                        >
+                          <Link2 size={11} /> Link Duplicate
+                        </button>
+                        <button
+                          onClick={() => handleConfirmNotDuplicate(candNum)}
+                          className="btn btn-secondary btn-sm"
+                          style={{ fontSize: '0.7rem', padding: '0.2rem 0.4rem' }}
+                        >
+                          Not Duplicate
+                        </button>
+                      </div>
                     </div>
-                    <div style={{ color: '#334155', fontWeight: 500, marginBottom: '0.25rem' }}>
-                      {cand.subject}
-                    </div>
-                    <div style={{ fontSize: '0.7rem', color: '#64748b', marginBottom: '0.4rem' }}>
-                      Signals: {cand.reason}
-                    </div>
-                    <div style={{ display: 'flex', gap: '0.35rem' }}>
-                      <button
-                        onClick={() => handleLinkDuplicate(cand.ticket_number)}
-                        className="btn btn-primary btn-sm"
-                        style={{ fontSize: '0.7rem', padding: '0.2rem 0.4rem' }}
-                      >
-                        <Link2 size={11} /> Link Duplicate
-                      </button>
-                      <button
-                        onClick={() => handleConfirmNotDuplicate(cand.ticket_number)}
-                        className="btn btn-secondary btn-sm"
-                        style={{ fontSize: '0.7rem', padding: '0.2rem 0.4rem' }}
-                      >
-                        Not Duplicate
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -464,9 +582,9 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({ ticketNumber, on
                   <span style={{ fontWeight: 600, color: '#0f172a' }}>Initial Inquiry by Author</span>
                   <span>{new Date(ticket.created_at).toLocaleString()}</span>
                 </div>
-                <p style={{ fontSize: '0.875rem', color: '#1e293b', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
-                  {ticket.description}
-                </p>
+                <div style={{ fontSize: '0.875rem', color: '#1e293b' }}>
+                  <AttachmentViewer content={ticket.description} />
+                </div>
               </div>
 
               {/* Message History */}
@@ -493,9 +611,9 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({ ticketNumber, on
                           {new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
                       </div>
-                      <p style={{ fontSize: '0.85rem', color: '#0f172a', whiteSpace: 'pre-wrap', lineHeight: 1.4 }}>
-                        {m.message}
-                      </p>
+                      <div style={{ fontSize: '0.85rem', color: '#0f172a' }}>
+                        <AttachmentViewer content={m.message} />
+                      </div>
                     </div>
                   );
                 })}
@@ -503,25 +621,99 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({ ticketNumber, on
 
               {/* Response Composer */}
               <div className="card">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                  <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#334155' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.65rem' }}>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#334155' }}>
                     Author Response Composer
                   </span>
                   <button
                     type="button"
                     onClick={handleGenerateDraft}
-                    disabled={draftLoading}
+                    disabled={generatingDraft}
                     className="btn btn-secondary btn-sm"
-                    title="Generate Draft based on BookLeaf operational policies"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.35rem',
+                      background: '#f5f3ff',
+                      color: '#6d28d9',
+                      border: '1px solid #ddd6fe',
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                    }}
                   >
-                    <FileText size={13} color="#2563eb" /> {draftLoading ? 'Formulating draft...' : 'Draft Response'}
+                    <Sparkles size={13} className={generatingDraft ? 'spin' : ''} />
+                    {generatingDraft ? 'Generating Gemini Draft...' : '✨ Generate AI Draft Response'}
                   </button>
                 </div>
 
-                {draftMeta && draftMeta.requires_manual_verification && (
-                  <div style={{ background: '#fef3c7', color: '#92400e', padding: '0.5rem 0.75rem', borderRadius: '4px', fontSize: '0.75rem', marginBottom: '0.5rem', display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-                    <AlertTriangle size={14} />
-                    <span>Policy Notice: {draftMeta.verification_notes || 'Please verify finance ledger before dispatch.'}</span>
+                {/* AI Draft Display Card */}
+                {aiDraft && (
+                  <div
+                    style={{
+                      background: '#f8fafc',
+                      border: '1px solid #c7d2fe',
+                      borderRadius: '8px',
+                      padding: '0.85rem',
+                      marginBottom: '0.85rem',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.5rem',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 700, fontSize: '0.8rem', color: '#4338ca' }}>
+                        <Bot size={15} />
+                        Gemini Assistive Draft
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.35rem' }}>
+                        <button
+                          type="button"
+                          onClick={handleApplyDraft}
+                          className="btn btn-primary btn-sm"
+                          style={{ fontSize: '0.72rem', padding: '0.2rem 0.5rem' }}
+                        >
+                          Insert into Composer
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAiDraft(null)}
+                          className="btn btn-secondary btn-sm"
+                          style={{ fontSize: '0.72rem', padding: '0.2rem 0.4rem' }}
+                        >
+                          Dismiss
+                        </button>
+                      </div>
+                    </div>
+
+                    {aiDraft.suggested_action && (
+                      <div style={{ fontSize: '0.75rem', color: '#0369a1', background: '#e0f2fe', padding: '0.3rem 0.5rem', borderRadius: '4px' }}>
+                        <strong>Suggested Action:</strong> {aiDraft.suggested_action}
+                      </div>
+                    )}
+
+                    {aiDraft.requires_manual_verification && (
+                      <div style={{ fontSize: '0.75rem', color: '#b45309', background: '#fef3c7', padding: '0.3rem 0.5rem', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                        <AlertTriangle size={13} />
+                        <span><strong>Manual Verification Required:</strong> {aiDraft.verification_notes || 'Verify details before sending to author.'}</span>
+                      </div>
+                    )}
+
+                    <div
+                      style={{
+                        background: '#ffffff',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '6px',
+                        padding: '0.6rem 0.75rem',
+                        fontSize: '0.8rem',
+                        color: '#334155',
+                        whiteSpace: 'pre-wrap',
+                        lineHeight: 1.45,
+                        maxHeight: '160px',
+                        overflowY: 'auto',
+                      }}
+                    >
+                      {aiDraft.draft_response}
+                    </div>
                   </div>
                 )}
 
@@ -529,7 +721,7 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({ ticketNumber, on
                   <textarea
                     rows={4}
                     required
-                    placeholder="Compose message to author (or click 'Draft Response' to populate from operational guidelines)..."
+                    placeholder="Compose message to author..."
                     value={responseText}
                     onChange={(e) => setResponseText(e.target.value)}
                     style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.85rem', resize: 'vertical' }}

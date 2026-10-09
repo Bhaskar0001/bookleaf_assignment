@@ -1,6 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { apiRequest } from '../../lib/api';
-import { ArrowLeft, Send, Clock, BookOpen, CheckCircle2 } from 'lucide-react';
+import { useRealtime } from '../../context/RealtimeContext';
+import { ArrowLeft, Send, Clock, BookOpen, CheckCircle2, Paperclip, X } from 'lucide-react';
+import { AttachmentViewer } from '../../components/common/AttachmentViewer';
 
 interface AuthorTicketViewProps {
   ticketNumber: string;
@@ -8,34 +10,46 @@ interface AuthorTicketViewProps {
 }
 
 export const AuthorTicketView: React.FC<AuthorTicketViewProps> = ({ ticketNumber, onBack }) => {
+  const { subscribe } = useRealtime();
   const [ticket, setTicket] = useState<any | null>(null);
   const [timeline, setTimeline] = useState<any[]>([]);
   const [replyText, setReplyText] = useState<string>('');
+  const [replyAttachmentName, setReplyAttachmentName] = useState<string>('');
+  const [replyAttachmentData, setReplyAttachmentData] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(true);
   const [sending, setSending] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchTicketData();
-  }, [ticketNumber]);
-
-  async function fetchTicketData() {
+  const fetchTicketData = useCallback(async (isSilent: boolean = false) => {
     try {
-      setLoading(true);
+      if (!isSilent) setLoading(true);
       const res = await apiRequest(`/author/tickets/${ticketNumber}`);
       setTicket(res.data);
 
-      // Fetch ticket-specific timeline
-      const tlRes = await apiRequest(`/author/timeline`);
-      // Filter timeline events matching this ticket number
-      const matchingEvents = (tlRes.data || []).filter((e: any) => e.ticket_number === ticketNumber);
-      setTimeline(matchingEvents);
+      // Fetch ticket-specific timeline directly from dedicated endpoint
+      const tlRes = await apiRequest(`/author/tickets/${ticketNumber}/timeline`);
+      setTimeline(tlRes.data || []);
     } catch (err: any) {
-      setError(err.message || 'Failed to load ticket details');
+      if (!isSilent) setError(err.message || 'Failed to load ticket details');
     } finally {
-      setLoading(false);
+      if (!isSilent) setLoading(false);
     }
-  }
+  }, [ticketNumber]);
+
+  useEffect(() => {
+    fetchTicketData(false);
+  }, [fetchTicketData]);
+
+  // Live WebSocket update subscription
+  useEffect(() => {
+    const unsubscribe = subscribe((evt) => {
+      if (evt.ticket_id === ticketNumber) {
+        console.log(`[AuthorTicketView] Live event received for #${ticketNumber}:`, evt.event);
+        fetchTicketData(true);
+      }
+    });
+    return unsubscribe;
+  }, [ticketNumber, subscribe, fetchTicketData]);
 
   const handleSendReply = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,11 +57,18 @@ export const AuthorTicketView: React.FC<AuthorTicketViewProps> = ({ ticketNumber
 
     try {
       setSending(true);
+      let fullMsg = replyText.trim();
+      if (replyAttachmentName && replyAttachmentData) {
+        fullMsg += `\n\n[Attachment: ${replyAttachmentName}](${replyAttachmentData})`;
+      }
+
       await apiRequest(`/author/tickets/${ticketNumber}/messages`, {
         method: 'POST',
-        body: JSON.stringify({ message: replyText.trim() }),
+        body: JSON.stringify({ message: fullMsg }),
       });
       setReplyText('');
+      setReplyAttachmentName('');
+      setReplyAttachmentData('');
       await fetchTicketData();
     } catch (err: any) {
       setError(err.message || 'Failed to send reply');
@@ -126,9 +147,9 @@ export const AuthorTicketView: React.FC<AuthorTicketViewProps> = ({ ticketNumber
               <span style={{ fontWeight: 600, color: '#0f172a' }}>Original Inquiry</span>
               <span style={{ color: '#64748b' }}>{new Date(ticket.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
             </div>
-            <p style={{ fontSize: '0.875rem', color: '#334155', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
-              {ticket.description}
-            </p>
+            <div style={{ fontSize: '0.875rem', color: '#334155' }}>
+              <AttachmentViewer content={ticket.description} />
+            </div>
           </div>
 
           {/* Messages Stream */}
@@ -156,9 +177,9 @@ export const AuthorTicketView: React.FC<AuthorTicketViewProps> = ({ ticketNumber
                       {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   </div>
-                  <p style={{ fontSize: '0.875rem', color: '#1e293b', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
-                    {msg.message}
-                  </p>
+                  <div style={{ fontSize: '0.875rem', color: '#1e293b' }}>
+                    <AttachmentViewer content={msg.message} />
+                  </div>
                 </div>
               );
             })}
@@ -178,7 +199,44 @@ export const AuthorTicketView: React.FC<AuthorTicketViewProps> = ({ ticketNumber
                 onChange={(e) => setReplyText(e.target.value)}
                 style={{ width: '100%', padding: '0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.875rem', resize: 'vertical' }}
               />
-              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <label className="btn btn-secondary btn-sm" style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                    <Paperclip size={13} /> {replyAttachmentName ? 'Change File' : 'Attach File'}
+                    <input
+                      type="file"
+                      style={{ display: 'none' }}
+                      accept="image/*,.pdf,.doc,.docx,.txt"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          setReplyAttachmentName(file.name);
+                          const reader = new FileReader();
+                          reader.onload = (ev) => {
+                            setReplyAttachmentData(ev.target?.result as string);
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                    />
+                  </label>
+                  {replyAttachmentName && (
+                    <span style={{ fontSize: '0.75rem', color: '#0f172a', fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                      {replyAttachmentName}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setReplyAttachmentName('');
+                          setReplyAttachmentData('');
+                        }}
+                        style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: 0 }}
+                        title="Remove attachment"
+                      >
+                        <X size={13} />
+                      </button>
+                    </span>
+                  )}
+                </div>
                 <button type="submit" className="btn btn-primary btn-sm" disabled={sending}>
                   <Send size={13} /> {sending ? 'Sending...' : 'Send Message'}
                 </button>

@@ -4,8 +4,6 @@ A production-grade, modular monolithic internal support and operations platform 
 
 The platform enables authors to access their publication catalog, inspect royalty breakdowns, submit structured support requests, and interact via a two-way communication timeline. For publishing operations teams, it provides a unified single-screen ticket workspace, table-first queue with multi-dimensional filtering, deterministic duplicate detection and linking, privileged internal notes, and AI-assisted response drafting strictly bound to verified BookLeaf publishing guidelines.
 
-> 📖 **Cloning on a new machine?** Follow the step-by-step [Clone & Setup Guide](CLONE_SETUP_GUIDE.md) for prerequisite installation, database setup, environment configuration, and running with or without Docker.
-
 ---
 
 ## Key Differentiating Features
@@ -60,16 +58,16 @@ The system seeds the exact authoritative dataset of 10 authors and 18 books:
 | Role | Account Name | Email | Password |
 | :--- | :--- | :--- | :--- |
 | **Admin** | Operations Admin | `admin@bookleaf.com` | `Admin@BookLeaf2026!` |
-| **Author** | Priya Sharma (`AUTH001`) | `priya.sharma@bookleaf.com` | `Author@BookLeaf2026!` |
-| **Author** | Rohit Verma (`AUTH002`) | `rohit.verma@bookleaf.com` | `Author@BookLeaf2026!` |
-| **Author** | Ananya Iyer (`AUTH003`) | `ananya.iyer@bookleaf.com` | `Author@BookLeaf2026!` |
-| **Author** | Vikram Malhotra (`AUTH004`) | `vikram.malhotra@bookleaf.com` | `Author@BookLeaf2026!` |
-| **Author** | Sneha Patel (`AUTH005`) | `sneha.patel@bookleaf.com` | `Author@BookLeaf2026!` |
-| **Author** | Amitav Roy (`AUTH006`) | `amitav.roy@bookleaf.com` | `Author@BookLeaf2026!` |
-| **Author** | Kavita Nair (`AUTH007`) | `kavita.nair@bookleaf.com` | `Author@BookLeaf2026!` |
-| **Author** | Devendra Joshi (`AUTH008`) | `devendra.joshi@bookleaf.com` | `Author@BookLeaf2026!` |
-| **Author** | Meera Sen (`AUTH009`) | `meera.sen@bookleaf.com` | `Author@BookLeaf2026!` |
-| **Author** | Arjun Kapoor (`AUTH010`) | `arjun.kapoor@bookleaf.com` | `Author@BookLeaf2026!` |
+| **Author** | Priya Sharma (`AUTH001`) | `priya.sharma@email.com` | `Author@BookLeaf2026!` |
+| **Author** | Rohit Kapoor (`AUTH002`) | `rohit.kapoor@email.com` | `Author@BookLeaf2026!` |
+| **Author** | Ananya Reddy (`AUTH003`) | `ananya.reddy@email.com` | `Author@BookLeaf2026!` |
+| **Author** | Vikram Joshi (`AUTH004`) | `vikram.joshi@email.com` | `Author@BookLeaf2026!` |
+| **Author** | Meera Nair (`AUTH005`) | `meera.nair@email.com` | `Author@BookLeaf2026!` |
+| **Author** | Arjun Malhotra (`AUTH006`) | `arjun.malhotra@email.com` | `Author@BookLeaf2026!` |
+| **Author** | Sneha Kulkarni (`AUTH007`) | `sneha.kulkarni@email.com` | `Author@BookLeaf2026!` |
+| **Author** | Farhan Sheikh (`AUTH008`) | `farhan.sheikh@email.com` | `Author@BookLeaf2026!` |
+| **Author** | Kavita Deshmukh (`AUTH009`) | `kavita.deshmukh@email.com` | `Author@BookLeaf2026!` |
+| **Author** | Diya Chatterjee (`AUTH010`) | `diya.chatterjee@email.com` | `Author@BookLeaf2026!` |
 
 ---
 

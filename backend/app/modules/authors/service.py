@@ -13,8 +13,8 @@ class AuthorService:
         book_counts = await self.db.execute(
             select(
                 func.count(Book.id).label("total"),
-                func.count(Book.id).filter(Book.status == "PUBLISHED").label("published"),
-                func.count(Book.id).filter(Book.status == "IN_PRODUCTION").label("in_production"),
+                func.count(Book.id).filter(Book.status.ilike("%Publish%")).label("published"),
+                func.count(Book.id).filter(Book.status.ilike("%Production%")).label("in_production"),
             ).where(Book.author_id == author.id)
         )
         counts = book_counts.first()

@@ -18,8 +18,8 @@ class DuplicateSignals(BaseModel):
 class DuplicateCandidateOut(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    ticket_id: uuid.UUID = Field(..., alias="ticketId")
-    ticket_number: str = Field(..., alias="ticketNumber")
+    ticket_id: uuid.UUID
+    ticket_number: str
     subject: str
     status: str
     similarity: float
@@ -45,8 +45,10 @@ class DuplicateRelationshipsResponse(BaseModel):
 
 
 class LinkDuplicateRequest(BaseModel):
-    target_ticket_id: str  # UUID or ticket_number
+    model_config = ConfigDict(populate_by_name=True)
+    target_ticket_id: str = Field(..., alias="targetTicketId")
 
 
 class UnlinkDuplicateRequest(BaseModel):
-    target_ticket_id: str  # UUID or ticket_number
+    model_config = ConfigDict(populate_by_name=True)
+    target_ticket_id: str = Field(..., alias="targetTicketId")

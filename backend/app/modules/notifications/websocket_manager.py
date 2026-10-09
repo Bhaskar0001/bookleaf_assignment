@@ -2,6 +2,7 @@ from typing import Dict, List, Any, Optional
 import json
 import uuid
 from fastapi import WebSocket
+from starlette.websockets import WebSocketState
 from app.core.logging import logger
 
 
@@ -13,7 +14,8 @@ class ConnectionManager:
         self.active_admin_connections: List[WebSocket] = []
 
     async def connect(self, websocket: WebSocket, user_id: uuid.UUID, role: str):
-        await websocket.accept()
+        if websocket.client_state == WebSocketState.CONNECTING:
+            await websocket.accept()
         if user_id not in self.active_user_connections:
             self.active_user_connections[user_id] = []
         self.active_user_connections[user_id].append(websocket)

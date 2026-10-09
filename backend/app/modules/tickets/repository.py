@@ -23,6 +23,8 @@ class TicketRepository:
         subject: str,
         description: str,
         book_id: Optional[uuid.UUID] = None,
+        category: Optional[str] = "GENERAL",
+        priority: Optional[str] = "MEDIUM",
     ) -> Ticket:
         ticket_number = await self.generate_ticket_number()
         ticket = Ticket(
@@ -32,6 +34,10 @@ class TicketRepository:
             subject=subject,
             description=description,
             status="OPEN",
+            category=category or "GENERAL",
+            category_source="AUTHOR",
+            priority=priority or "MEDIUM",
+            priority_source="SYSTEM",
         )
         self.db.add(ticket)
         return ticket
@@ -85,6 +91,7 @@ class TicketRepository:
             selectinload(Ticket.author).selectinload(Author.user),
             selectinload(Ticket.book),
             selectinload(Ticket.assigned_admin),
+            selectinload(Ticket.messages).selectinload(TicketMessage.sender),
         )
 
         conditions = []

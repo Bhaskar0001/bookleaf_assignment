@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any
+import asyncio
 import json
 import re
 import google.generativeai as genai
@@ -35,11 +36,19 @@ class AIProvider(ABC):
 
 
 class GeminiProvider(AIProvider):
-    def __init__(self, api_key: str, model_name: str = "gemini-1.5-flash"):
+    def __init__(self, api_key: str, model_name: str = "gemini-3.8-flash"):
         self.api_key = api_key
         self.model_name = model_name
         genai.configure(api_key=api_key)
         self.model = genai.GenerativeModel(model_name)
+
+    async def _generate_content_async(self, prompt: str) -> str:
+        """Runs the synchronous SDK call in a worker thread with timeout to avoid freezing asyncio loop."""
+        def _call():
+            resp = self.model.generate_content(prompt)
+            return resp.text.strip()
+
+        return await asyncio.wait_for(asyncio.to_thread(_call), timeout=8.0)
 
     async def classify_ticket(self, subject: str, description: str, book_title: Optional[str]) -> ClassificationResult:
         prompt = f"""
@@ -55,8 +64,7 @@ Return ONLY a valid JSON object with keys:
 - "confidence": (float between 0.0 and 1.0)
 - "reasoning": (short explanation)
 """
-        response = self.model.generate_content(prompt)
-        text = response.text.strip()
+        text = await self._generate_content_async(prompt)
         match = re.search(r"\{.*\}", text, re.DOTALL)
         if match:
             data = json.loads(match.group(0))
@@ -83,8 +91,7 @@ Return ONLY a valid JSON object with keys:
 - "confidence": (float between 0.0 and 1.0)
 - "reasoning": (short explanation)
 """
-        response = self.model.generate_content(prompt)
-        text = response.text.strip()
+        text = await self._generate_content_async(prompt)
         match = re.search(r"\{.*\}", text, re.DOTALL)
         if match:
             data = json.loads(match.group(0))
@@ -124,8 +131,7 @@ Return ONLY a valid JSON object with keys:
 - "requires_manual_verification": boolean,
 - "verification_notes": "Note what the admin must verify before sending, if any"
 """
-        response = self.model.generate_content(prompt)
-        text = response.text.strip()
+        text = await self._generate_content_async(prompt)
         match = re.search(r"\{.*\}", text, re.DOTALL)
         if match:
             data = json.loads(match.group(0))
@@ -173,19 +179,97 @@ class MockFallbackProvider(AIProvider):
         recent_messages: list,
         policy_context: str,
     ) -> DraftResponseResult:
-        book_title = book_info.get("title", "your book")
-        return DraftResponseResult(
-            draft_response=(
+        book_title = book_info.get("title", "your title")
+        text = (ticket_subject + " " + ticket_description).lower()
+
+        if any(w in text for w in ["royalty", "payment", "payout", "paid", "earning", "money", "rupee"]):
+            if any(w in text for w in ["low", "less", "wrong amount", "calculation"]):
+                draft = (
+                    f"Dear {author_name},\n\n"
+                    f"Thank you for reaching out regarding the royalties for '{book_title}'.\n\n"
+                    "We completely understand why you'd want clarity on this. At BookLeaf, royalties follow an 80/20 split on net profit—"
+                    "calculated as MRP minus actual printing cost, platform commission (Amazon/Flipkart), and shipping charges. "
+                    "We want to ensure complete transparency with you. Our operations team is pulling your detailed line-by-line royalty breakdown "
+                    "for each retail channel so you can see the exact math.\n\n"
+                    "We will share the full sales ledger with you within 48 hours right here in this thread.\n\n"
+                    "Warm regards,\nBookLeaf Author Operations Desk"
+                )
+                action = "Pull line-by-line channel ledger (Amazon/Flipkart/BookLeaf Store) and attach breakdown"
+            else:
+                draft = (
+                    f"Dear {author_name},\n\n"
+                    f"Thank you for contacting us regarding your royalty payout for '{book_title}'. We acknowledge how important timely payouts are to you.\n\n"
+                    "As per BookLeaf policy, royalties are calculated quarterly and disbursed within 45 days of the quarter ending, "
+                    "with a minimum payout threshold of ₹1,000 (accumulated balances below this roll over to the subsequent quarter). "
+                    "Our finance desk is verifying your linked bank details and sales reconciliation for the latest cycle.\n\n"
+                    "If your payout is overdue or your bank credentials require a re-verification, we will escalate this immediately "
+                    "and provide a confirmed resolution within 48 hours.\n\n"
+                    "Warm regards,\nBookLeaf Author Operations Desk"
+                )
+                action = "Check author banking ledger, payout threshold status (₹1,000), and recent remittance run"
+
+        elif any(w in text for w in ["isbn", "barcode", "metadata"]):
+            draft = (
+                f"Dear {author_name},\n\n"
+                f"Thank you for flagging this ISBN/metadata discrepancy regarding '{book_title}'.\n\n"
+                "We treat ISBN and catalog metadata issues as high-priority operational items. We have immediately escalated this to our senior production team "
+                "to cross-verify the ISBN registered under BookLeaf's publisher imprint against the distributor catalog feeds.\n\n"
+                "Our team will resolve the catalog mapping and provide an updated confirmation right here within 48 hours.\n\n"
+                "Warm regards,\nBookLeaf Production & Operations Team"
+            )
+            action = "Escalate to production lead; check Raja Rammohun Roy agency registry and Amazon/Flipkart feed mapping"
+
+        elif any(w in text for w in ["print", "quality", "damaged", "misprint", "binding", "blurry", "pages"]):
+            draft = (
+                f"Dear {author_name},\n\n"
+                f"Please accept our sincere apologies for the print quality issues you experienced with your author copies of '{book_title}'. "
+                "This is certainly not the standard of craftsmanship we strive for at BookLeaf.\n\n"
+                "Could you please share 2–3 clear photographs of the defective copies (showing the misprint, binding, or cover alignment)? "
+                "Once our manufacturing desk verifies the batch defect with our printing facility, BookLeaf will immediately arrange a free reprint "
+                "and dispatch replacement copies to you within 5–7 business days.\n\n"
+                "We look forward to your photos so we can initiate this right away.\n\n"
+                "Warm regards,\nBookLeaf Printing & Quality Desk"
+            )
+            action = "Request photos of defective copies; prepare free reprint order with Delhi in-house / Repro team"
+
+        elif any(w in text for w in ["unavailable", "stock", "out of stock", "amazon", "flipkart"]):
+            draft = (
+                f"Dear {author_name},\n\n"
+                f"Thank you for letting us know about the availability status of '{book_title}'.\n\n"
+                "When a published book shows as 'Currently Unavailable' on Amazon or Flipkart, it typically indicates a temporary channel inventory synchronization issue. "
+                "Our distribution desk has triggered an inventory re-sync with the respective platform's publisher operations desk.\n\n"
+                "These re-syncs typically update and reflect as live in-stock within 24–48 hours. We are monitoring the listing and will update you as soon as it reflects active.\n\n"
+                "Warm regards,\nBookLeaf Distribution Support"
+            )
+            action = "Trigger distributor stock re-sync with Amazon India / Flipkart publisher desk"
+
+        elif any(w in text for w in ["typesetting", "cover", "proof", "production", "stage", "when will", "status"]):
+            draft = (
+                f"Dear {author_name},\n\n"
+                f"Thank you for checking in on the production progress of '{book_title}'.\n\n"
+                "At BookLeaf, every title progresses through our 9-stage pipeline: Manuscript Received → Editing → Cover Design → Typesetting → Proofreading → "
+                "ISBN Assignment → Printing → Distribution Setup → Published & Live. We want to ensure we take every care while keeping the timeline tight.\n\n"
+                "Our production coordinator is reviewing the exact milestone status for your manuscript. We will update your project tracker and provide a confirmed target completion date within 24 hours.\n\n"
+                "Warm regards,\nBookLeaf Production Team"
+            )
+            action = "Check current manufacturing stage in production tracker and update author"
+
+        else:
+            draft = (
                 f"Dear {author_name},\n\n"
                 f"Thank you for contacting BookLeaf Author Support regarding '{ticket_subject}'.\n\n"
-                f"We are actively reviewing this with our operations team concerning '{book_title}'. "
-                "Per BookLeaf policy, our team is cross-referencing your records to provide an accurate update. "
-                "We appreciate your patience and will keep you informed right here.\n\n"
-                "Warm regards,\nBookLeaf Author Operations"
-            ),
-            suggested_action="Review author ledger or production dashboard before replying",
+                f"We are actively reviewing your query with our operations team regarding '{book_title}'. "
+                "Authors are our valued publishing partners, and we are committed to providing you with clear, accurate information. "
+                "Our team is investigating the details and will get back to you with a comprehensive update within 24–48 hours.\n\n"
+                "Warm regards,\nBookLeaf Author Operations Desk"
+            )
+            action = "Review author inquiry and respond within 24 business hours"
+
+        return DraftResponseResult(
+            draft_response=draft,
+            suggested_action=action,
             requires_manual_verification=True,
-            verification_notes="Verify bank status or manufacturing queue before finalizing response",
+            verification_notes="Verify author records against live database ledger before sending",
         )
 
 

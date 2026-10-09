@@ -114,7 +114,7 @@ export const AuthorDashboard: React.FC<AuthorDashboardProps> = ({ onNavigate }) 
             ₹{Number(profile.total_royalties_pending).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
           </div>
           <div style={{ fontSize: '0.75rem', color: '#b45309' }}>
-            Scheduled for next monthly disbursement run
+            Quarterly disbursement cycle (within 45 days of quarter end; min. ₹1,000)
           </div>
         </div>
 
@@ -137,20 +137,20 @@ export const AuthorDashboard: React.FC<AuthorDashboardProps> = ({ onNavigate }) 
       {/* Operational Policies Quick Reference */}
       <div className="card">
         <h2 style={{ fontSize: '0.95rem', fontWeight: 600, marginBottom: '0.75rem', color: '#0f172a' }}>
-          BookLeaf Operations Guidance
+          BookLeaf Operations Guidance & Policy Standards
         </h2>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem', fontSize: '0.8rem', color: '#475569' }}>
           <div style={{ background: '#f8fafc', padding: '0.75rem', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-            <div style={{ fontWeight: 600, color: '#0f172a', marginBottom: '0.25rem' }}>Monthly Royalty Disbursements</div>
-            Disbursements run between the 10th and 15th of each month for reconciled sales with minimum threshold of ₹1,000.
+            <div style={{ fontWeight: 600, color: '#0f172a', marginBottom: '0.25rem' }}>80/20 Royalty Split & Quarterly Payouts</div>
+            80% of net profit (MRP minus printing, channel commission & shipping) to author. Calculated quarterly and paid within 45 days (₹1,000 rollover threshold).
           </div>
           <div style={{ background: '#f8fafc', padding: '0.75rem', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-            <div style={{ fontWeight: 600, color: '#0f172a', marginBottom: '0.25rem' }}>ISBN Registration Policy</div>
-            A 13-digit ISBN is assigned upon final manuscript sign-off in Stage 4. Once registered, title and ISBN remain immutable.
+            <div style={{ fontWeight: 600, color: '#0f172a', marginBottom: '0.25rem' }}>Printing Quality & In-House Facility</div>
+            Managed via Delhi in-house facility, Repro India, and Epitome Books. Turnaround is 5–7 business days; free reprints arranged for verified batch defects.
           </div>
           <div style={{ background: '#f8fafc', padding: '0.75rem', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-            <div style={{ fontWeight: 600, color: '#0f172a', marginBottom: '0.25rem' }}>Print-On-Demand Turnaround</div>
-            Printing orders take 5-7 working days. Defective or damaged copies are replaced free of charge within 7 days.
+            <div style={{ fontWeight: 600, color: '#0f172a', marginBottom: '0.25rem' }}>9-Stage Production & Distribution Sync</div>
+            Tracked across 9 clear milestones. Channel listings on Amazon/Flipkart/BookLeaf Store re-sync within 24–48 hours if marked unavailable.
           </div>
         </div>
       </div>

@@ -52,7 +52,7 @@ services:
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - JWT_SECRET=supersecret_jwt_key_bookleaf_production_2026_xyz123!
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - GEMINI_MODEL=gemini-1.5-flash
+      - GEMINI_MODEL=gemini-3.8-flash
       - CORS_ORIGINS=http://localhost,http://localhost:3000,http://localhost:5173
     ports:
       - "8000:8000"
@@ -60,6 +60,30 @@ services:
       sh -c "alembic upgrade head &&
              python scripts/seed.py &&
              uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: bookleaf_celery_worker
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - APP_ENV=production
+      - LOG_LEVEL=INFO
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/bookleaf_db
+      - DATABASE_SYNC_URL=postgresql+psycopg2://postgres:postgres@postgres:5432/bookleaf_db
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=gemini-3.8-flash
+    command: >
+      sh -c "celery -A app.workers.celery_app worker --loglevel=info"
 
   frontend:
     build:

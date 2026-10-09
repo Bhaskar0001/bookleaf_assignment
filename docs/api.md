@@ -8,7 +8,7 @@ Base Path: `/api/v1`
 - **Request**:
   ```json
   {
-    "email": "priya.sharma@bookleaf.com",
+    "email": "priya.sharma@email.com",
     "password": "Author@BookLeaf2026!"
   }
   ```

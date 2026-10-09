@@ -1,6 +1,7 @@
 # Database Files
 pgdata/
 pg_data/
+pgsql/
 data/
 *.sqlite
 *.sqlite3

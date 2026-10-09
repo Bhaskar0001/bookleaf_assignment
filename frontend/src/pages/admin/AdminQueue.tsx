@@ -1,13 +1,15 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import type { Ticket } from '../../types';
 import { apiRequest } from '../../lib/api';
-import { Search, ArrowRight, RefreshCw } from 'lucide-react';
+import { useRealtime } from '../../context/RealtimeContext';
+import { Search, ArrowRight, RefreshCw, Sparkles } from 'lucide-react';
 
 interface AdminQueueProps {
   onOpenWorkspace: (ticketNumber: string) => void;
 }
 
 export const AdminQueue: React.FC<AdminQueueProps> = ({ onOpenWorkspace }) => {
+  const { subscribe } = useRealtime();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [totalCount, setTotalCount] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(true);
@@ -20,13 +22,9 @@ export const AdminQueue: React.FC<AdminQueueProps> = ({ onOpenWorkspace }) => {
   const [search, setSearch] = useState<string>('');
   const [sortBy, setSortBy] = useState<string>('recent');
 
-  useEffect(() => {
-    fetchQueue();
-  }, [statusFilter, categoryFilter, priorityFilter, sortBy]);
-
-  async function fetchQueue() {
+  const fetchQueue = useCallback(async (isSilent: boolean = false) => {
     try {
-      setLoading(true);
+      if (!isSilent) setLoading(true);
       const params = new URLSearchParams();
       if (statusFilter) params.append('status', statusFilter);
       if (categoryFilter) params.append('category', categoryFilter);
@@ -40,11 +38,23 @@ export const AdminQueue: React.FC<AdminQueueProps> = ({ onOpenWorkspace }) => {
       setTickets(res.data.items);
       setTotalCount(res.data.total);
     } catch (err: any) {
-      setError(err.message || 'Failed to load ticket queue');
+      if (!isSilent) setError(err.message || 'Failed to load ticket queue');
     } finally {
-      setLoading(false);
+      if (!isSilent) setLoading(false);
     }
-  }
+  }, [statusFilter, categoryFilter, priorityFilter, search, sortBy]);
+
+  useEffect(() => {
+    fetchQueue(false);
+  }, [fetchQueue]);
+
+  // Live WebSocket subscription
+  useEffect(() => {
+    const unsubscribe = subscribe(() => {
+      fetchQueue(true);
+    });
+    return unsubscribe;
+  }, [subscribe, fetchQueue]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,7 +72,7 @@ export const AdminQueue: React.FC<AdminQueueProps> = ({ onOpenWorkspace }) => {
             Author support requests with classification, deterministic duplicate detection, and triage priority
           </p>
         </div>
-        <button onClick={fetchQueue} className="btn btn-secondary btn-sm">
+        <button onClick={() => fetchQueue(false)} className="btn btn-secondary btn-sm">
           <RefreshCw size={13} /> Refresh Queue ({totalCount})
         </button>
       </div>
@@ -206,7 +216,8 @@ export const AdminQueue: React.FC<AdminQueueProps> = ({ onOpenWorkspace }) => {
                   </td>
                   <td>
                     {t.category ? (
-                      <span className="badge badge-category">
+                      <span className="badge badge-category" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                        {t.category_source === 'SYSTEM' && <Sparkles size={11} color="#6366f1" />}
                         {t.category.replace('_', ' ')}
                       </span>
                     ) : (

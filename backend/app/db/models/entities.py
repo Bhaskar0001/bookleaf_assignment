@@ -45,6 +45,8 @@ class Author(Base, TimestampMixin):
     author_id: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)  # e.g., AUTH001
     pen_name: Mapped[str] = mapped_column(String(255), nullable=False)
     phone: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    city: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    joined_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     total_royalties_earned: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0.00"), nullable=False)
     total_royalties_paid: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0.00"), nullable=False)
     total_royalties_pending: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0.00"), nullable=False)
@@ -65,12 +67,14 @@ class Book(Base, TimestampMixin):
     isbn: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
     genre: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     publication_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
-    status: Mapped[str] = mapped_column(String(64), nullable=False, default="IN_PRODUCTION")  # PUBLISHED, IN_PRODUCTION, DRAFT
+    status: Mapped[str] = mapped_column(String(64), nullable=False, default="In Production")  # "Published & Live", "In Production - Cover Design", etc.
     mrp: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)
+    author_royalty_per_copy: Mapped[Optional[Decimal]] = mapped_column(Numeric(10, 2), nullable=True)
     copies_sold: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     royalty_earned: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0.00"), nullable=False)
     royalty_paid: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0.00"), nullable=False)
     royalty_pending: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0.00"), nullable=False)
+    last_royalty_payout_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     print_partner: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     available_on: Mapped[Any] = mapped_column(JSONB().with_variant(JSON(), "sqlite"), default=list, nullable=False)
 
@@ -102,6 +106,7 @@ class Ticket(Base, TimestampMixin):
     priority_source: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)  # SYSTEM, ADMIN
 
     assigned_admin_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), index=True, nullable=True)
+
     resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -232,7 +237,7 @@ class SupportAssistRun(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     ticket_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tickets.id", ondelete="CASCADE"), index=True, nullable=False)
     task_type: Mapped[str] = mapped_column(String(64), nullable=False)  # CLASSIFICATION, PRIORITIZATION, RESPONSE_DRAFT
-    provider: Mapped[str] = mapped_column(String(64), nullable=False)  # GEMINI, etc.
+    provider: Mapped[str] = mapped_column(String(64), nullable=False)  # GEMINI, LOCAL_RULES
     model: Mapped[str] = mapped_column(String(64), nullable=False)
     input_payload: Mapped[Any] = mapped_column(JSONB().with_variant(JSON(), "sqlite"), nullable=False)
     output_payload: Mapped[Optional[Any]] = mapped_column(JSONB().with_variant(JSON(), "sqlite"), nullable=True)

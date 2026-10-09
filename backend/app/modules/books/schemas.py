@@ -15,10 +15,12 @@ class BookOut(BaseModel):
     publication_date: Optional[date] = None
     status: str
     mrp: Optional[Decimal] = None
+    author_royalty_per_copy: Optional[Decimal] = None
     copies_sold: int
     royalty_earned: Decimal
     royalty_paid: Decimal
     royalty_pending: Decimal
+    last_royalty_payout_date: Optional[date] = None
     print_partner: Optional[str] = None
     available_on: List[str] = []
     created_at: datetime

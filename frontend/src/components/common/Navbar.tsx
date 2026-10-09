@@ -1,6 +1,6 @@
 import React from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { BookOpen, Shield, User as UserIcon, LogOut, ArrowRightLeft } from 'lucide-react';
+import { BookOpen, Shield, User as UserIcon, LogOut } from 'lucide-react';
 
 interface NavbarProps {
   currentTab: string;
@@ -8,21 +8,7 @@ interface NavbarProps {
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ currentTab, onTabChange }) => {
-  const { user, logout, switchUser } = useAuth();
-
-  const demoAccounts = [
-    { label: 'Admin: Operations Desk', email: 'admin@bookleaf.com', pass: 'Admin@BookLeaf2026!' },
-    { label: 'AUTH001: Priya Sharma (Fiction / Pending Royalties)', email: 'priya.sharma@bookleaf.com', pass: 'Author@BookLeaf2026!' },
-    { label: 'AUTH002: Rohit Verma (Self-Help / Zero Royalties)', email: 'rohit.verma@bookleaf.com', pass: 'Author@BookLeaf2026!' },
-    { label: 'AUTH003: Ananya Iyer (Poetry / High Royalties)', email: 'ananya.iyer@bookleaf.com', pass: 'Author@BookLeaf2026!' },
-    { label: 'AUTH004: Vikram Malhotra (Thriller / In Production)', email: 'vikram.malhotra@bookleaf.com', pass: 'Author@BookLeaf2026!' },
-    { label: 'AUTH005: Sneha Patel (Romance / Ingram Spark)', email: 'sneha.patel@bookleaf.com', pass: 'Author@BookLeaf2026!' },
-    { label: 'AUTH006: Amitav Ghosh (Historical / Replika Press)', email: 'amitav.ghosh@bookleaf.com', pass: 'Author@BookLeaf2026!' },
-    { label: 'AUTH007: Kavita Krishnan (Non-Fiction / Thomson Press)', email: 'kavita.krishnan@bookleaf.com', pass: 'Author@BookLeaf2026!' },
-    { label: 'AUTH008: Devdutt Pattanaik (Mythology / Active Sales)', email: 'devdutt.pattanaik@bookleaf.com', pass: 'Author@BookLeaf2026!' },
-    { label: 'AUTH009: Arundhati Roy (Literary / Multiple Books)', email: 'arundhati.roy@bookleaf.com', pass: 'Author@BookLeaf2026!' },
-    { label: 'AUTH010: Chetan Bhagat (Commercial / High Volume)', email: 'chetan.bhagat@bookleaf.com', pass: 'Author@BookLeaf2026!' },
-  ];
+  const { user, logout } = useAuth();
 
   return (
     <header style={{ background: '#ffffff', borderBottom: '1px solid #e2e8f0', position: 'sticky', top: 0, zIndex: 40 }}>
@@ -88,33 +74,13 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, onTabChange }) => {
           </nav>
         )}
 
-        {/* User context & Quick Switch */}
+        {/* User Profile & Logout */}
         {user && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            {/* Quick Switch Dropdown */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', background: '#f8fafc', padding: '0.25rem 0.5rem', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-              <ArrowRightLeft size={14} color="#64748b" />
-              <select
-                aria-label="Switch User Account"
-                style={{ background: 'transparent', border: 'none', fontSize: '0.75rem', color: '#334155', outline: 'none', cursor: 'pointer' }}
-                value={user.email}
-                onChange={(e) => {
-                  const target = demoAccounts.find(d => d.email === e.target.value);
-                  if (target) {
-                    switchUser(target.email, target.pass);
-                  }
-                }}
-              >
-                {demoAccounts.map(d => (
-                  <option key={d.email} value={d.email}>{d.label}</option>
-                ))}
-              </select>
-            </div>
-
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
             {/* Profile Tag */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', color: '#334155' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', fontSize: '0.825rem', color: '#334155' }}>
               {user.role === 'ADMIN' ? <Shield size={16} color="#0284c7" /> : <UserIcon size={16} color="#059669" />}
-              <span style={{ fontWeight: 600 }}>{user.fullName}</span>
+              <span style={{ fontWeight: 600 }}>{user.fullName || user.email}</span>
               <span className={`badge ${user.role === 'ADMIN' ? 'badge-open' : 'badge-resolved'}`}>
                 {user.role}
               </span>
@@ -125,9 +91,9 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, onTabChange }) => {
               onClick={logout}
               title="Sign Out"
               className="btn btn-secondary btn-sm"
-              style={{ padding: '0.35rem' }}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.775rem' }}
             >
-              <LogOut size={15} />
+              <LogOut size={14} /> Sign Out
             </button>
           </div>
         )}

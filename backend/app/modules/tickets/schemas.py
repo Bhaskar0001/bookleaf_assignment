@@ -8,6 +8,7 @@ class CreateTicketRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     book_id: Optional[str] = Field(None, alias="bookId")
+    category: Optional[str] = "GENERAL"
     subject: str = Field(..., min_length=3, max_length=255)
     description: str = Field(..., min_length=5)
     attachment_name: Optional[str] = None
