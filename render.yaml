@@ -42,4 +42,4 @@ databases:
     plan: free
     region: oregon
     databaseName: bookleaf_db
-    user: postgres
+    user: bookleaf_user
