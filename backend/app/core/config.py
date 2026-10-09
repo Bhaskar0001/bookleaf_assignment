@@ -65,9 +65,16 @@ class Settings(BaseSettings):
             return v
         # Normalize Render and standard PostgreSQL URLs to asyncpg driver
         if v.startswith("postgres://"):
-            return v.replace("postgres://", "postgresql+asyncpg://", 1)
-        if v.startswith("postgresql://") and not v.startswith("postgresql+"):
-            return v.replace("postgresql://", "postgresql+asyncpg://", 1)
+            v = v.replace("postgres://", "postgresql+asyncpg://", 1)
+        elif v.startswith("postgresql://") and not v.startswith("postgresql+"):
+            v = v.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+        # asyncpg requires ssl=require instead of sslmode=require and does not accept channel_binding
+        if "postgresql+asyncpg://" in v:
+            v = v.replace("sslmode=require", "ssl=require")
+            v = v.replace("&channel_binding=require", "")
+            v = v.replace("channel_binding=require&", "")
+            v = v.replace("?channel_binding=require", "")
         return v
 
     @field_validator("DATABASE_SYNC_URL", mode="after")
@@ -80,11 +87,15 @@ class Settings(BaseSettings):
             if db_url and "127.0.0.1" not in db_url:
                 clean = db_url.replace("postgresql+asyncpg://", "postgresql+psycopg2://")
                 clean = clean.replace("postgres://", "postgresql+psycopg2://")
+                clean = clean.replace("ssl=require", "sslmode=require")
+                clean = clean.replace("&channel_binding=require", "")
+                clean = clean.replace("channel_binding=require&", "")
+                clean = clean.replace("?channel_binding=require", "")
                 return clean
         if v and v.startswith("postgres://"):
-            return v.replace("postgres://", "postgresql+psycopg2://", 1)
+            v = v.replace("postgres://", "postgresql+psycopg2://", 1)
         if v and v.startswith("postgresql://") and not v.startswith("postgresql+"):
-            return v.replace("postgresql://", "postgresql+psycopg2://", 1)
+            v = v.replace("postgresql://", "postgresql+psycopg2://", 1)
         return v
 
     @field_validator("CORS_ORIGINS", mode="after")
