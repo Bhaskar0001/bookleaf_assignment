@@ -143,3 +143,16 @@ async def general_exception_handler(request: Request, exc: Exception):
 
 # Register API v1
 app.include_router(api_v1_router)
+
+
+# Root Welcome Route
+@app.get("/", tags=["Root"])
+async def root():
+    return {
+        "service": "BookLeaf Author Support & Communication Portal API",
+        "status": "online",
+        "docs_url": "/docs",
+        "health_url": "/api/v1/health",
+        "version": "1.0.0",
+    }
+
